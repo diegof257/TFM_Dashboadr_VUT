@@ -1,0 +1,28 @@
+# ============================================================
+# Observatorio VUT — Dependencias de producción
+# Python 3.14 · Generado 2026-04-30
+# ============================================================
+
+# --- Aplicación web ---
+streamlit==1.54.0
+
+# --- Datos tabulares ---
+pandas==2.3.3
+numpy==2.4.2
+openpyxl==3.1.5          # lectura de INE_C2021_Indicadores.xlsx
+
+# --- Datos espaciales ---
+geopandas==1.1.2          # lectura de .gpkg y GeoJSON
+libpysal==4.14.1          # pesos espaciales (Queen + .gal INE)
+
+# --- Análisis espacial ---
+esda==2.9.0               # Moran_BV y Moran_Local_BV
+
+# --- Visualización ---
+plotly==6.5.2             # mapas choropleth y gráficos interactivos
+
+# --- Forecasting ---
+skforecast==0.22.0        # wrapper de sklearn/XGBoost para series temporales
+xgboost==3.2.0            # gradient boosting para predicción multi-series
+statsmodels==0.14.6       # SARIMAX (series temporales con variable exógena)
+scikit-learn>=1.3.0       # StandardScaler y base de skforecast
