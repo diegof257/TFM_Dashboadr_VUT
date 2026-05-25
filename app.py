@@ -679,8 +679,6 @@ with tab_evol:
     st.caption(
         "Permite verificar visualmente la divergencia entre destinos de alta intensidad "
         "turística (Málaga, Sevilla) y ciudades con baja presión VUT (Jaén, Teruel). "
-        "Datos por sección censal facilitados por el equipo investigador del IATUR · "
-        "Universidades de Granada, Málaga y Sevilla (2024)."
     )
 
     ind_evol = st.selectbox(
@@ -790,7 +788,6 @@ with tab_forecast:
     st.caption(
         "El modelo aprende la tendencia histórica del precio del alquiler (2016–2023) "
         "y estima cómo podría haber evolucionado en 2024 y 2025. "
-        "Último dato real disponible: Q4 2023."
     )
 
     if not FORECASTING_DISPONIBLE:
