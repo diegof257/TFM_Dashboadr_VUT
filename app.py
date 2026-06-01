@@ -73,86 +73,114 @@ h1 { font-family: 'Lora', serif; font-size: 2.2rem !important; }
 # ===========================================================================
 # MOTOR ANALÍTICO — I DE MORAN BIVARIADO
 # ===========================================================================
-def calcular_moran_bivariado(df_input, col_x='%VUT', col_y='Em2', ciudad=None):
+def _z_analitico_moran_bv(x, y, w):
+    """Z-score analítico de Cliff & Ord para el I de Moran Bivariado.
+
+    GeoDa reporta este Z analítico (bajo el supuesto de aleatorización espacial),
+    mientras que esda solo ofrece z_sim (permutaciones). Esta función replica la
+    fórmula de varianza teórica de Cliff & Ord (1981) para obtener valores
+    comparables con los publicados en IATUR (2024).
+
+    Parámetros
+    ----------
+    x, y : array  Variables estandarizadas (se estandarizan internamente).
+    w    : W      Matriz de pesos row-standardizada.
+
+    Retorna
+    -------
+    I : float   Estadístico I de Moran Bivariado.
+    Z : float   Z-score analítico.
+    p : float   p-valor bilateral (distribución normal estándar).
+    """
+    zx = (x - x.mean()) / x.std(ddof=1)
+    zy = (y - y.mean()) / y.std(ddof=1)
+    n  = len(x)
+    wmat = w.full()[0]                          # matriz densa n×n
+    wzy  = wmat @ zy
+    I    = float((zx @ wzy) / (n - 1))
+    # Momentos teóricos bajo aleatorización espacial
+    EI   = -1.0 / (n - 1)
+    S0   = wmat.sum()
+    S1   = 0.5 * ((wmat + wmat.T) ** 2).sum()
+    ri   = wmat.sum(axis=1) + wmat.sum(axis=0)
+    S2   = float((ri ** 2).sum())
+    n2   = float(n * n)
+    EI2  = (n2 * S1 - n * S2 + 3.0 * S0 ** 2) / ((n2 - 1.0) * S0 ** 2)
+    VI   = EI2 - EI ** 2
+    Z    = float((I - EI) / np.sqrt(VI))
+    # p-valor bilateral con aproximación normal
+    p    = float(2.0 * (1.0 - 0.5 * (1.0 + np.sign(Z) *
+               (1.0 - np.exp(-0.7071067811865476 * abs(Z))
+                ** 1.4142135623730951) ** 0.5)))
+    # Fórmula simple pero aproximada; usar scipy si está disponible
+    try:
+        from scipy import stats as _stats
+        p = float(2.0 * _stats.norm.sf(abs(Z)))
+    except ImportError:
+        pass
+    return I, Z, p
+
+
+def calcular_moran_bivariado(df_input, col_x='%VUT', col_y='Em2',
+                             ciudad=None, ano=None):
     """Calcula el I de Moran Global y Local Bivariado (X = %VUT, Y = €/m²).
 
-    Para Málaga intenta cargar el archivo oficial de pesos espaciales del INE (.gal)
-    para garantizar la reproducibilidad de los valores publicados en el informe IATUR
-    (referencia: I = 0,40, Z = 17,6, p < 0,001). Para el resto de ciudades se
-    calculan pesos de contigüidad Reina (Queen) directamente desde la geometría.
+    Metodología uniforme para todas las ciudades y años:
+    - Fuente de datos: CSV (secciones con registro simultáneo de %VUT y €/m²).
+    - Matriz de pesos: contigüidad Reina (Queen) calculada dinámicamente
+      desde la geometría censal del INE.
+    - I Global y Z-score: fórmula analítica de Cliff & Ord (misma que GeoDa),
+      basada en los momentos teóricos de la distribución nula E[I] y V[I].
+    - Clústeres LISA: Moran_Local_BV de esda con 999 permutaciones.
 
     Parámetros
     ----------
     df_input : GeoDataFrame
         Datos de secciones censales para una ciudad y año concretos.
     col_x : str
-        Columna usada como variable de retardo espacial (tasa de saturación VUT).
+        Variable X (retardo espacial): tasa de saturación VUT (%VUT).
     col_y : str
-        Columna usada como variable dependiente (precio del alquiler €/m²).
+        Variable Y: precio del alquiler (€/m²).
     ciudad : str, opcional
-        Nombre del municipio, usado para seleccionar la fuente de pesos espaciales.
+        Nombre del municipio (no usado en el cálculo, reservado para trazabilidad).
+    ano : int, opcional
+        Año seleccionado (no usado en el cálculo, reservado para trazabilidad).
 
     Retorna
     -------
     gdf : GeoDataFrame
         Datos de entrada con la columna 'Cluster_Moran' añadida (HH/LH/LL/HL/NS).
     I : float
-        Estadístico I de Moran Global.
-    z_sim : float
-        Z-score de la distribución de permutaciones (999 permutaciones).
-    p_sim : float
-        Pseudo p-valor del test de permutaciones.
+        Estadístico I de Moran Global (Cliff & Ord).
+    z_score : float
+        Z-score analítico de Cliff & Ord.
+    p_valor : float
+        p-valor bilateral (aproximación normal).
     """
+    # ── Preparación del GDF (CSV) ─────────────────────────────────────────────
     gdf = gpd.GeoDataFrame(df_input, geometry='geometry').copy()
     gdf = gdf.dropna(subset=[col_x, col_y])
     gdf = gdf.drop_duplicates(subset=['Seccion_Censal']).reset_index(drop=True)
 
-    w = None
-    gal_path = os.path.join(ESPACIAL_DIR, "MLG_23_16.gal")
-    es_malaga = ciudad and 'malaga' in ciudad.lower().replace('á', 'a')
-
-    # Intentar cargar el archivo oficial de pesos del INE para Málaga
-    if es_malaga and os.path.exists(gal_path):
-        try:
-            w_full = libpysal.io.open(gal_path).read()
-            ids_gdf_set = set(gdf['Seccion_Censal'].astype(str).tolist())
-            ids_comun   = [i for i in w_full.id_order if str(i) in ids_gdf_set]
-
-            if len(ids_comun) >= 10:
-                # Reordenar el GDF para que coincida exactamente con el orden del .gal antes de hacer el subset
-                gdf_idx = gdf.set_index('Seccion_Censal')
-                gdf_idx = gdf_idx.loc[[str(i) for i in ids_comun]]
-                w_sub   = libpysal.weights.util.w_subset(w_full, ids_comun)
-                w_sub.transform = 'r'
-
-                if len(gdf_idx) == len(w_sub):
-                    gdf = gdf_idx.reset_index()
-                    w   = w_sub
-                    st.sidebar.caption(
-                        f"Pesos espaciales: archivo oficial .gal INE "
-                        f"({len(ids_comun)} secciones)"
-                    )
-        except Exception:
-            w = None  # Fallback a pesos Queen si ocurre cualquier error
-
-    if w is None:
-        w = libpysal.weights.Queen.from_dataframe(gdf)
-        w.transform = 'r'
+    # ── Matriz de pesos Queen (dinámica desde geometría) ──────────────────────
+    w = libpysal.weights.Queen.from_dataframe(gdf, silence_warnings=True)
+    w.transform = 'r'
 
     x, y = gdf[col_x].values, gdf[col_y].values
-    moran_global = Moran_BV(x, y, w)
-    moran_local  = Moran_Local_BV(x, y, w, permutations=999)
 
-    # Asignar etiquetas de clúster LISA con nivel de significancia p ≤ 0,05
-    sig = 0.05
+    # ── Clústeres LISA (Moran_Local_BV, permutaciones) ───────────────────────
+    moran_local = Moran_Local_BV(x, y, w, permutations=999)
+    sig      = 0.05
     clusters = np.full(len(gdf), 'No Significativo', dtype=object)
     clusters[(moran_local.q == 1) & (moran_local.p_sim <= sig)] = 'Alto-Alto (HH)'
     clusters[(moran_local.q == 2) & (moran_local.p_sim <= sig)] = 'Bajo-Alto (LH)'
     clusters[(moran_local.q == 3) & (moran_local.p_sim <= sig)] = 'Bajo-Bajo (LL)'
     clusters[(moran_local.q == 4) & (moran_local.p_sim <= sig)] = 'Alto-Bajo (HL)'
-
     gdf['Cluster_Moran'] = clusters
-    return gdf, moran_global.I, moran_global.z_sim, moran_global.p_sim
+
+    # ── I Global + Z analítico Cliff & Ord ───────────────────────────────────
+    I_g, Z_g, p_g = _z_analitico_moran_bv(x, y, w)
+    return gdf, I_g, Z_g, p_g
 
 
 # ===========================================================================
@@ -533,7 +561,7 @@ with tab_mapa:
             st.warning(f"Sin datos para {ciudad_focal} en {ano_sel}.")
         elif mostrar_moran:
             with st.spinner("Calculando permutaciones espaciales (999 iteraciones)…"):
-                df_f, m_i, m_z, m_p = calcular_moran_bivariado(df_f, ciudad=ciudad_focal)
+                df_f, m_i, m_z, m_p = calcular_moran_bivariado(df_f, ciudad=ciudad_focal, ano=ano_sel)
 
             # Interpretación automática de la significancia según los umbrales del Z-score
             if m_z >= 2.58:
@@ -759,10 +787,11 @@ with tab_datos:
         (gdf['municipio'] == ciudad_tabla) & (gdf['Fecha_ano'] == ano_tabla)
     ][[c for c in cols_tabla if c in gdf.columns]].copy()
 
-    # Mostrar %VUT como porcentaje independientemente de cómo esté almacenado en el archivo fuente
+    # Normalizar %VUT a porcentaje [0-100] y renombrar para evitar columna duplicada
     if '%VUT' in df_tabla.columns:
         factor = 100 if df_tabla['%VUT'].max() <= 1.0 else 1
-        df_tabla['%VUT_display'] = (df_tabla['%VUT'] * factor).round(2)
+        df_tabla['%VUT (%)'] = (df_tabla['%VUT'] * factor).round(2)
+        df_tabla = df_tabla.drop(columns=['%VUT'])
 
     st.dataframe(df_tabla.reset_index(drop=True), use_container_width=True, height=420)
     st.caption(
