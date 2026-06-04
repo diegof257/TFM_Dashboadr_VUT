@@ -185,43 +185,6 @@ def calcular_moran_bivariado(df_input, col_x='%VUT', col_y='Em2',
 # ETL — CARGA Y ENRIQUECIMIENTO DE DATOS
 # ===========================================================================
 @st.cache_data
-def load_census_indicators():
-    """Carga los indicadores del Censo 2021 del INE para todas las secciones censales.
-
-    El archivo Excel contiene 36.333 filas (una por sección censal) con variables
-    socioeconómicas que contextualizan la presión de las VUT. Los nombres de columna
-    se renombran desde los códigos internos del INE a identificadores descriptivos.
-
-    Devuelve None si el archivo Excel no se encuentra; en ese caso el dashboard
-    sigue funcionando pero las columnas derivadas del censo no estarán disponibles.
-    """
-    path = find_file(
-        os.path.join(DATOS_DIR, "INE_C2021_Indicadores.xlsx"),
-        "INE_C2021_Indicadores.xlsx"
-    )
-    if not os.path.exists(path):
-        return None
-    df = pd.read_excel(path, dtype={'CUSEC': str})
-    df['CUSEC'] = df['CUSEC'].astype(str).str.zfill(10)
-    df = df.rename(columns={
-        't1_1':  'pob_total',
-        't18_1': 'viv_total_censo',
-        't19_1': 'viv_principales',
-        't19_2': 'viv_no_principales',
-        't20_1': 'viv_propiedad',
-        't20_2': 'viv_alquiler',
-        't21_1': 'total_hogares',
-        't5_1':  'pct_extranjeros',
-        't10_1': 'pct_parados',
-        't9_1':  'pct_estudios_sup',
-    })
-    cols = ['CUSEC', 'pob_total', 'viv_total_censo', 'viv_principales',
-            'viv_no_principales', 'viv_propiedad', 'viv_alquiler',
-            'total_hogares', 'pct_extranjeros', 'pct_parados', 'pct_estudios_sup']
-    return df[cols]
-
-
-@st.cache_data
 def load_and_merge_data():
     """Carga, une y enriquece todos los datos espaciales y tabulares del dashboard.
 
@@ -310,18 +273,6 @@ def load_and_merge_data():
     sin_cruzar = len(gdf_mapa) - len(gdf)
     if sin_cruzar > 0:
         st.sidebar.caption(f"{sin_cruzar} secciones sin datos numéricos (secciones no incluidas en el dataset IATUR para ese año).")
-
-    # ── D. Enriquecimiento con indicadores del Censo 2021 ─────────────────────────────
-    df_censo = load_census_indicators()
-    if df_censo is not None:
-        gdf = gdf.merge(df_censo, left_on='Seccion_Censal', right_on='CUSEC', how='left')
-
-        # % de viviendas principales en régimen de alquiler (Censo 2021, dato estático).
-        # Las secciones con mayor proporción de inquilinos son las más expuestas a la
-        # presión sobre los precios derivada de las VUT.
-        gdf['Pct_viv_alquiler'] = (
-            gdf['viv_alquiler'] / gdf['viv_principales'].replace(0, np.nan) * 100
-        ).round(2)
 
     # Densidad de VUT por km² (dinámica, derivada de la geometría — no requiere censo).
     # Captura la intensidad territorial con independencia del tamaño del parque inmobiliario.
@@ -450,9 +401,6 @@ gdf = load_and_merge_data()
 # el rango de colores del resto del mapa choropleth.
 MAX_PRECIO = gdf['Em2'].quantile(0.98)
 MAX_VUT    = gdf['%VUT'].quantile(0.98)
-
-TIENE_CENSO = 'pob_total' in gdf.columns
-
 
 # ===========================================================================
 # BARRA LATERAL
