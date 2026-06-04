@@ -26,8 +26,6 @@ except ImportError:
 # ---------------------------------------------------------------------------
 CENSO_DIR    = "censo_ciudades"        # GeoPackages (.gpkg) por ciudad
 DATOS_DIR    = "datos"                 # CSV y Excel con los datos fuente
-ESPACIAL_DIR = "correlacion_espacial"  # Pesos espaciales (.gal) y .gpkg auxiliares
-
 
 def find_file(*paths):
     """Devuelve la primera ruta existente de entre las candidatas proporcionadas.
@@ -563,11 +561,14 @@ with tab_mapa:
             with st.spinner("Calculando permutaciones espaciales (999 iteraciones)…"):
                 df_f, m_i, m_z, m_p = calcular_moran_bivariado(df_f, ciudad=ciudad_focal, ano=ano_sel)
 
-            # Interpretación automática de la significancia según los umbrales del Z-score
-            if m_z >= 2.58:
+            # Interpretación automática de la significancia según los umbrales del Z-score.
+            # Umbrales: Z≥3.29 → p<0.001 (99,9%); Z≥2.58 → p<0.01 (99%); Z≥1.96 → p<0.05 (95%)
+            if m_z >= 3.29:
                 st.success(f"I Global de Moran: **{m_i:.4f}** | Z = **{m_z:.2f}** — Significancia extrema (99,9 %): el efecto de contagio espacial es estadísticamente robusto.")
+            elif m_z >= 2.58:
+                st.info(f"I Global de Moran: **{m_i:.4f}** | Z = **{m_z:.2f}** — Significancia alta (99 %): correlación espacial real.")
             elif m_z >= 1.96:
-                st.info(f"I Global de Moran: **{m_i:.4f}** | Z = **{m_z:.2f}** — Significancia alta (95 %): correlación espacial real.")
+                st.info(f"I Global de Moran: **{m_i:.4f}** | Z = **{m_z:.2f}** — Significancia moderada (95 %): correlación espacial real.")
             else:
                 st.warning(f"I Global de Moran: **{m_i:.4f}** | Z = **{m_z:.2f}** — Patrón no concluyente.")
 
