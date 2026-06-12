@@ -402,6 +402,17 @@ gdf = load_and_merge_data()
 MAX_PRECIO = gdf['Em2'].quantile(0.98)
 MAX_VUT    = gdf['%VUT'].quantile(0.98)
 
+
+# Escala fija para los indicadores divergentes (Tasa_crec_VUT, IDS_VUT).
+# El límite ±100 es constante para toda la serie (2016–2023) y todas las
+# ciudades, de modo que los colores de los mapas sean directamente comparables
+# entre años y entre ciudades. Cubre el 85–89 % de las observaciones; los
+# valores fuera del rango se saturan en el color extremo. Además, ±100 % tiene
+# lectura natural en la tasa: +100 % = la sección duplica su %VUT,
+# −100 % = lo pierde por completo.
+LIM_TASA = 100
+LIM_IDS  = 100
+
 # ===========================================================================
 # BARRA LATERAL
 # ===========================================================================
@@ -412,6 +423,64 @@ mostrar_moran = st.sidebar.checkbox(
     "Activar Clústeres (Moran Bivariado)",
     help="Calcula la correlación espacial VUT↔Alquiler. Identifica el efecto 'Mancha de Aceite'."
 )
+
+_DESCRIPCIONES_IND = {
+    "Precio Alquiler (€/m²)": (
+        "**Precio medio del alquiler residencial** expresado en €/m² "
+        "para cada sección censal, calculado como la media de los contratos "
+        "del último trimestre del año seleccionado. "
+        "Es la variable dependiente principal del análisis."
+    ),
+    "Concentración VUT (%VUT)": (
+        "**Porcentaje de viviendas de uso turístico** sobre el total de "
+        "viviendas de la sección censal. Mide la presión que las VUT ejercen "
+        "sobre el parque residencial. Un valor alto indica que una proporción "
+        "significativa de la vivienda disponible ha sido retirada del mercado "
+        "de alquiler habitual."
+    ),
+    "Densidad VUT (VUTs/km²)": (
+        "**Número de VUTs por kilómetro cuadrado** de superficie de la "
+        "sección censal. A diferencia del %VUT, mide la intensidad "
+        "territorial independientemente del tamaño del parque inmobiliario, "
+        "lo que permite comparar secciones de muy distinto tamaño."
+    ),
+    "Crecimiento anual %VUT (%)": (
+        "**Variación interanual del %VUT**: diferencia relativa respecto al "
+        "año anterior. Valores positivos indican expansión de VUTs; negativos, "
+        "contracción (visible durante la pandemia 2020–2021). "
+        "No disponible para 2016 (año base de la serie). "
+        "**Escala fija ±100 %**, comparable entre años y ciudades."
+    ),
+    "Total VUTs registradas": (
+        "**Número absoluto de VUTs registradas** en la sección censal en el "
+        "último trimestre del año. Refleja el volumen total del stock turístico "
+        "sin normalizar por superficie ni por viviendas totales."
+    ),
+    "Difusión Espacial VUT": (
+        "**Clasificación de cada sección en 4 cuadrantes** según su nivel "
+        "actual de saturación (%VUT) y su dinámica de crecimiento relativo (IDS).\n\n"
+        "🔴 **Saturada activa** — %VUT ≥ mediana e IDS ≥ 0: zona ya muy saturada que "
+        "además sigue creciendo más rápido que sus vecinas.\n\n"
+        "🟠 **Plateau saturado** — %VUT ≥ mediana e IDS < 0: zona muy saturada cuyo "
+        "crecimiento se ha estabilizado (frente de ola ya pasado). "
+        "Típico del **centro urbano consolidado**.\n\n"
+        "🟡 **Difusión emergente** — %VUT < mediana e IDS ≥ 0: baja saturación actual "
+        "pero creciendo más que sus vecinas — **frente activo de la mancha de aceite**.\n\n"
+        "🟢 **Sin presión** — %VUT < mediana e IDS < 0: baja saturación y sin dinamismo "
+        "relativo destacable.\n\n"
+        "El umbral de %VUT es la mediana de la ciudad para ese año."
+    ),
+    "Clústeres Moran": (
+        "**Clústeres de autocorrelación espacial bivariada** (%VUT ↔ €/m²), "
+        "calculados con el I de Moran Local (LISA, 999 permutaciones).\n\n"
+        "🔴 **HH** — Alta saturación VUT y alquiler alto: zona de presión directa.\n\n"
+        "🩷 **LH** — Baja saturación pero alquiler alto: efecto de *contagio* "
+        "espacial desde zonas vecinas saturadas.\n\n"
+        "🔵 **LL** — Baja saturación y alquiler bajo: zona residencial protegida.\n\n"
+        "💙 **HL** — Alta saturación pero alquiler bajo: outlier o zona en transición.\n\n"
+        "El clúster LH es la evidencia clave del efecto *mancha de aceite*."
+    ),
+}
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Añadir nueva ciudad")
@@ -452,13 +521,13 @@ with c2:
 with c3:
     indicadores_dict = {
         "Precio Alquiler (€/m²)":              "Em2",
-        "Saturación Turística (%VUT)":          "%VUT",
+        "Concentración VUT (%VUT)":          "%VUT",
         "Densidad VUT (VUTs/km²)":              "VUT_km2",
         "Crecimiento anual %VUT (%)":           "Tasa_crec_VUT",
         "Total VUTs registradas":               "VUT.Formula",
     }
     if 'IDS_VUT' in gdf.columns:
-        indicadores_dict["Difusión Espacial VUT (IDS)"] = "IDS_VUT"
+        indicadores_dict["Difusión Espacial VUT"] = "Cuadrante_IDS"
     if not mostrar_moran:
         nombre_ind = st.selectbox("Indicador:", list(indicadores_dict.keys()))
         col_ind    = indicadores_dict[nombre_ind]
@@ -466,6 +535,10 @@ with c3:
         nombre_ind = "Clústeres Moran"
         col_ind    = "Cluster_Moran"
         st.info("Modo Moran activo: %VUT vs €/m²")
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("### Indicador seleccionado")
+st.sidebar.markdown(_DESCRIPCIONES_IND.get(nombre_ind, ""))
 
 
 # ===========================================================================
@@ -545,6 +618,68 @@ with tab_mapa:
                     'Presion_1000hab': 'Densidad VUT (VUTs/1000 hab)',
                 }
             )
+        elif col_ind == "Cuadrante_IDS":
+            umbral_vut = df_f['%VUT'].median()
+            umbral_display = umbral_vut * (100 if df_f['%VUT'].max() <= 1.0 else 1)
+
+            if 'IDS_VUT' not in df_f.columns:
+                df_f = df_f.copy()
+                df_f['IDS_VUT'] = float('nan')
+
+            def _clasificar_cuadrante(row):
+                if pd.isna(row['IDS_VUT']) or pd.isna(row['%VUT']):
+                    return 'Sin datos'
+                alta_sat = row['%VUT'] >= umbral_vut
+                difunde  = row['IDS_VUT'] >= 0
+                if alta_sat and difunde:
+                    return 'Saturada activa'
+                elif alta_sat and not difunde:
+                    return 'Plateau saturado'
+                elif not alta_sat and difunde:
+                    return 'Difusión emergente'
+                else:
+                    return 'Sin presión'
+
+            df_f['Cuadrante_IDS'] = df_f.apply(_clasificar_cuadrante, axis=1)
+
+            if df_f['Cuadrante_IDS'].eq('Sin datos').all():
+                st.info("ℹ️ Los cuadrantes no están disponibles para este año (IDS requiere datos del año anterior).")
+
+            hover_cuad = {'Em2': ':.2f', '%VUT': ':.4f', 'IDS_VUT': ':.2f', 'Cuadrante_IDS': True}
+            fig = px.choropleth_mapbox(
+                df_f, geojson=df_f.geometry, locations=df_f.index,
+                color='Cuadrante_IDS',
+                color_discrete_map={
+                    'Saturada activa':    '#b91c1c',
+                    'Plateau saturado':   '#f97316',
+                    'Difusión emergente': '#eab308',
+                    'Sin presión':        '#16a34a',
+                    'Sin datos':          '#e5e7eb',
+                },
+                category_orders={'Cuadrante_IDS': [
+                    'Saturada activa', 'Plateau saturado',
+                    'Difusión emergente', 'Sin presión', 'Sin datos'
+                ]},
+                mapbox_style="carto-positron",
+                center={"lat": cam['lat'], "lon": cam['lon']},
+                zoom=cam['zoom'], opacity=0.85,
+                hover_name='Seccion_Censal',
+                hover_data={k: v for k, v in hover_cuad.items() if k in df_f.columns},
+                labels={
+                    'Em2':          'Alquiler (€/m²)',
+                    '%VUT':         'Saturación VUT (%)',
+                    'IDS_VUT':      'IDS',
+                    'Cuadrante_IDS': 'Cuadrante',
+                }
+            )
+            st.caption(
+                f"Umbral %VUT = **{umbral_display:.1f} %** (mediana de {ciudad_focal} en {ano_sel}). "
+                "🔴 **Saturada activa**: alta saturación y sigue creciendo más que sus vecinas. "
+                "🟠 **Plateau saturado**: alta saturación pero crecimiento estabilizado (centro histórico). "
+                "🟡 **Difusión emergente**: baja saturación pero avanzando — frente activo de la mancha de aceite. "
+                "🟢 **Sin presión**: baja saturación sin dinamismo relativo."
+            )
+
         else:
             # Seleccionar paleta de color y rango según el indicador activo
             es_tasa   = col_ind == 'Tasa_crec_VUT'
@@ -552,14 +687,10 @@ with tab_mapa:
             es_precio = col_ind == 'Em2'
             if es_tasa:
                 paleta = "RdYlGn_r"   # divergente: rojo = crecimiento, verde = contracción
-                vals = df_f['Tasa_crec_VUT'].dropna()
-                lim = max(abs(vals.quantile(0.02)), abs(vals.quantile(0.98))) if len(vals) > 0 else 50
-                rango = [-lim, lim]
+                rango  = [-LIM_TASA, LIM_TASA]
             elif es_ids:
                 paleta = "RdYlGn_r"   # divergente: rojo = sección emisora, verde = receptora
-                vals = df_f['IDS_VUT'].dropna()
-                lim = max(abs(vals.quantile(0.02)), abs(vals.quantile(0.98))) if len(vals) > 0 else 30
-                rango = [-lim, lim]
+                rango  = [-LIM_IDS, LIM_IDS]
             elif es_precio:
                 paleta = "YlOrRd"
                 rango  = [0, MAX_PRECIO]
@@ -576,6 +707,26 @@ with tab_mapa:
             # Los indicadores de tasa de crecimiento e IDS no están definidos para el año base (2016)
             if (es_tasa or es_ids) and ano_sel == min(anos):
                 st.info("ℹ️ Este indicador no está disponible para 2016 (es el año base de la serie).")
+
+            # Explicación de la escala fija para los indicadores divergentes
+            if es_tasa:
+                st.caption(
+                    f"**Escala fija de color: de −{LIM_TASA:.0f} % a +{LIM_TASA:.0f} %.** "
+                    "La escala es la misma para todos los años y ciudades, por lo que los "
+                    "colores son directamente comparables entre mapas. "
+                    "Rojo = crecimiento del %VUT (+100 % = la sección duplica su saturación); "
+                    "verde = contracción (−100 % = pierde todas sus VUT). "
+                    "Los crecimientos superiores a +100 % se muestran saturados en rojo extremo."
+                )
+            elif es_ids:
+                st.caption(
+                    f"**Escala fija de color: de −{LIM_IDS:.0f} a +{LIM_IDS:.0f} puntos.** "
+                    "La escala es la misma para todos los años y ciudades, por lo que los "
+                    "colores son directamente comparables entre mapas. "
+                    "Rojo = la sección crece más rápido que sus vecinas (foco emisor de la "
+                    "difusión); verde = crece más lento (zona receptora). "
+                    "Los valores fuera del rango se muestran saturados en el color extremo."
+                )
 
             fig = px.choropleth_mapbox(
                 df_f, geojson=df_f.geometry, locations=df_f.index,
@@ -660,7 +811,7 @@ with tab_evol:
 
     ind_evol = st.selectbox(
         "Indicador a comparar:",
-        ["Precio Alquiler (€/m²)", "Saturación Turística (%VUT)", "Total VUTs registradas"],
+        ["Precio Alquiler (€/m²)", "Concentración VUT (%VUT)", "Total VUTs registradas"],
         key="ind_evol"
     )
     col_evol = indicadores_dict.get(ind_evol, "Em2")
@@ -764,8 +915,10 @@ with tab_forecast:
 
     st.markdown("### ¿A cuánto podría haber llegado el alquiler?")
     st.caption(
-        "El modelo aprende la tendencia histórica del precio del alquiler (2016–2023) "
-        "y estima cómo podría haber evolucionado en 2024 y 2025. "
+        "El modelo estima la evolución del precio del alquiler en 2024 y 2025 asumiendo "
+        "que la presión turística (%VUT) continúa creciendo al ritmo histórico. "
+        "Se entrena con la serie 2016–2023 excluyendo el período pandémico (2020–2021), "
+        "que distorsiona la tendencia estructural del mercado."
     )
 
     if not FORECASTING_DISPONIBLE:
@@ -792,49 +945,62 @@ with tab_forecast:
             value=2025
         )
 
-    horizonte = 8  # 8 trimestres para cubrir 2024 y 2025 completos
+    horizonte = 8
+    COVID_ANOS = [2020, 2021]
 
-    serie = series_df[ciudad_fc].dropna()
-    exog  = exog_df[ciudad_fc].loc[serie.index].fillna(0)
-    ultima_fecha  = serie.index[-1]
+    serie_full = series_df[ciudad_fc].dropna()
+    exog_full  = exog_df[ciudad_fc].loc[serie_full.index].fillna(0)
+    ultima_fecha   = serie_full.index[-1]
     fechas_futuras = pd.date_range(
         start=ultima_fecha + pd.DateOffset(months=3),
         periods=horizonte, freq='QS'
     )
 
+    # Serie de entrenamiento: excluye período pandémico 2020-2021
+    mask_covid  = ~serie_full.index.year.isin(COVID_ANOS)
+    serie_train = serie_full[mask_covid]
+    exog_train  = exog_full[mask_covid]
+
     with st.spinner("Calculando predicción..."):
+
+        # Proyección del %VUT futuro con ARIMA(1,1,1) sobre la serie completa
         try:
-            # Modelo principal: SARIMAX(1,1,1) con %VUT como variable exógena.
-            # La proyección exógena usa la media de los últimos 4 trimestres observados
-            # como estimación de estado estacionario de la saturación VUT en 2024–2025.
+            m_vut = SARIMAX(exog_full, order=(1, 1, 1), trend='c',
+                            enforce_stationarity=False, enforce_invertibility=False)
+            r_vut = m_vut.fit(disp=False, method='lbfgs', maxiter=200)
+            exog_fut = np.clip(
+                r_vut.get_forecast(steps=horizonte).predicted_mean.values, 0, None
+            ).reshape(-1, 1)
+        except Exception:
+            exog_fut = np.full((horizonte, 1), exog_full.iloc[-4:].mean())
+
+        # Modelo de precio: SARIMAX(1,1,1) con %VUT proyectado como exógena
+        try:
             model = SARIMAX(
-                serie,
-                exog=exog,
-                order=(1, 1, 1),
-                enforce_stationarity=False,
-                enforce_invertibility=False
+                serie_train, exog=exog_train,
+                order=(1, 1, 1), trend='c',
+                enforce_stationarity=False, enforce_invertibility=False
             )
             res = model.fit(disp=False, method='lbfgs', maxiter=200)
-            exog_fut = np.full((horizonte, 1), exog.iloc[-4:].mean())
-            fc = res.get_forecast(steps=horizonte, exog=exog_fut)
+            fc  = res.get_forecast(steps=horizonte, exog=exog_fut)
             pred_vals = fc.predicted_mean.values
             ci_lower  = fc.conf_int().iloc[:, 0].values
             ci_upper  = fc.conf_int().iloc[:, 1].values
         except Exception:
-            # Fallback: SARIMA(1,1,0) sin variable exógena si el modelo principal no converge
-            model = SARIMAX(serie, order=(1, 1, 0))
+            # Fallback: SARIMAX(1,1,0) sin exógena si el modelo principal no converge
+            model = SARIMAX(serie_train, order=(1, 1, 0))
             res   = model.fit(disp=False)
             fc    = res.get_forecast(steps=horizonte)
             pred_vals = fc.predicted_mean.values
             ci_lower  = fc.conf_int().iloc[:, 0].values
             ci_upper  = fc.conf_int().iloc[:, 1].values
 
-    # Métricas resumen para el año de forecast seleccionado
-    idx_ano    = [i for i, f in enumerate(fechas_futuras) if f.year == ano_consulta]
-    precio_ano = pred_vals[idx_ano].mean() if idx_ano else pred_vals[-1]
-    precio_min = ci_lower[idx_ano].mean()  if idx_ano else ci_lower[-1]
-    precio_max = ci_upper[idx_ano].mean()  if idx_ano else ci_upper[-1]
-    ultimo_real = serie.iloc[-1]
+    # Métricas resumen
+    idx_ano     = [i for i, f in enumerate(fechas_futuras) if f.year == ano_consulta]
+    precio_ano  = pred_vals[idx_ano].mean() if idx_ano else pred_vals[-1]
+    precio_min  = ci_lower[idx_ano].mean()  if idx_ano else ci_lower[-1]
+    precio_max  = ci_upper[idx_ano].mean()  if idx_ano else ci_upper[-1]
+    ultimo_real = serie_full.iloc[-1]
     variacion   = (precio_ano - ultimo_real) / ultimo_real * 100
 
     st.markdown("---")
@@ -860,7 +1026,7 @@ with tab_forecast:
 
     fig_fc = go.Figure()
 
-    # Banda del intervalo de confianza al 95% (área rellena)
+    # Banda del intervalo de confianza al 95%
     fig_fc.add_trace(go.Scatter(
         x=list(fechas_futuras) + list(fechas_futuras[::-1]),
         y=list(ci_upper) + list(ci_lower[::-1]),
@@ -871,9 +1037,20 @@ with tab_forecast:
         hoverinfo='skip'
     ))
 
-    # Serie histórica
+    # Período COVID sombreado para mostrar qué se excluyó del entrenamiento
+    fig_fc.add_vrect(
+        x0='2020-01-01', x1='2022-01-01',
+        fillcolor='rgba(156,163,175,0.15)',
+        line_width=0,
+        annotation_text='COVID (excluido del modelo)',
+        annotation_position='top left',
+        annotation_font_color='#9ca3af',
+        annotation_font_size=11
+    )
+
+    # Serie histórica completa (incluye COVID visualmente)
     fig_fc.add_trace(go.Scatter(
-        x=serie.index, y=serie.values,
+        x=serie_full.index, y=serie_full.values,
         mode='lines+markers',
         name='Precio real (histórico)',
         line=dict(color=color, width=2.5),
@@ -889,7 +1066,6 @@ with tab_forecast:
         marker=dict(size=7, symbol='diamond')
     ))
 
-    # Línea vertical que marca el último dato real disponible
     fig_fc.add_vline(
         x=ultima_fecha.timestamp() * 1000,
         line_dash='dot', line_color='#9ca3af',
@@ -898,7 +1074,6 @@ with tab_forecast:
         annotation_font_color='#6b7280'
     )
 
-    # Sombrear el año de forecast seleccionado con un rectángulo
     if idx_ano:
         fig_fc.add_vrect(
             x0=fechas_futuras[idx_ano[0]].timestamp() * 1000,
@@ -925,7 +1100,9 @@ with tab_forecast:
     st.plotly_chart(fig_fc, use_container_width=True)
 
     st.caption(
-        "La zona sombreada representa el intervalo de confianza al 95% del modelo SARIMAX (1,1,1). "
-        "Cuanto más nos alejamos del último dato real, mayor es la incertidumbre. "
+        "Modelo SARIMAX(1,1,1) entrenado con la serie 2016–2023 excluyendo el período "
+        "pandémico (2020–2021). El %VUT futuro se proyecta con un ARIMA(1,1,1) asumiendo "
+        "que la presión turística continúa creciendo al ritmo histórico. "
+        "La zona sombreada representa el intervalo de confianza al 95%. "
         "Datos base: IATUR 2024 (Universidades de Granada, Málaga y Sevilla)."
     )
