@@ -482,15 +482,6 @@ _DESCRIPCIONES_IND = {
     ),
 }
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("### Añadir nueva ciudad")
-st.sidebar.info(
-    "Para replicar en otra provincia:\n\n"
-    "1. Añade su `.gpkg` a la carpeta\n"
-    "2. Incorpora sus secciones al dataset IATUR\n"
-    "3. La app lo detecta automáticamente"
-)
-
 
 # ===========================================================================
 # CABECERA
@@ -502,43 +493,27 @@ st.markdown(
     "Datos facilitados por el equipo investigador del IATUR (Universidades de Granada, Málaga y Sevilla) · "
     "Último dato disponible: Q4 2023"
 )
-st.markdown("---")
+# Datos compartidos entre tabs (no son widgets UI)
+ciudades = sorted(gdf['municipio'].dropna().unique().tolist())
+indicadores_dict = {
+    "Precio Alquiler (€/m²)":    "Em2",
+    "Concentración VUT (%VUT)":  "%VUT",
+    "Densidad VUT (VUTs/km²)":   "VUT_km2",
+    "Crecimiento anual %VUT (%)": "Tasa_crec_VUT",
+    "Total VUTs registradas":    "VUT.Formula",
+}
+if 'IDS_VUT' in gdf.columns:
+    indicadores_dict["Difusión Espacial VUT"] = "Cuadrante_IDS"
 
-
-# ===========================================================================
-# FILTROS GLOBALES (compartidos entre todos los tabs)
-# ===========================================================================
-c1, c2, c3 = st.columns(3)
-
-with c1:
-    ciudades = sorted(gdf['municipio'].dropna().unique().tolist())
-    ciudad_focal = st.selectbox("Ciudad:", ciudades)
-
-with c2:
-    anos = sorted(gdf[gdf['municipio'] == ciudad_focal]['Fecha_ano'].dropna().unique().astype(int))
-    ano_sel = st.select_slider("Año:", options=anos, value=max(anos))
-
-with c3:
-    indicadores_dict = {
-        "Precio Alquiler (€/m²)":              "Em2",
-        "Concentración VUT (%VUT)":          "%VUT",
-        "Densidad VUT (VUTs/km²)":              "VUT_km2",
-        "Crecimiento anual %VUT (%)":           "Tasa_crec_VUT",
-        "Total VUTs registradas":               "VUT.Formula",
-    }
-    if 'IDS_VUT' in gdf.columns:
-        indicadores_dict["Difusión Espacial VUT"] = "Cuadrante_IDS"
-    if not mostrar_moran:
-        nombre_ind = st.selectbox("Indicador:", list(indicadores_dict.keys()))
-        col_ind    = indicadores_dict[nombre_ind]
-    else:
-        nombre_ind = "Clústeres Moran"
-        col_ind    = "Cluster_Moran"
-        st.info("Modo Moran activo: %VUT vs €/m²")
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### Indicador seleccionado")
-st.sidebar.markdown(_DESCRIPCIONES_IND.get(nombre_ind, ""))
+st.sidebar.markdown("### Añadir nueva ciudad")
+st.sidebar.info(
+    "Para replicar en otra provincia:\n\n"
+    "1. Añade su `.gpkg` a la carpeta\n"
+    "2. Incorpora sus secciones al dataset IATUR\n"
+    "3. La app lo detecta automáticamente"
+)
 
 
 # ===========================================================================
@@ -556,6 +531,25 @@ tab_mapa, tab_evol, tab_datos, tab_forecast = st.tabs([
 # TAB 1 — MAPA INTERACTIVO
 # ---------------------------------------------------------------------------
 with tab_mapa:
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        ciudad_focal = st.selectbox("Ciudad:", ciudades, key="ciudad_mapa")
+    with c2:
+        anos = sorted(gdf[gdf['municipio'] == ciudad_focal]['Fecha_ano'].dropna().unique().astype(int))
+        ano_sel = st.select_slider("Año:", options=anos, value=max(anos), key="ano_mapa")
+    with c3:
+        if not mostrar_moran:
+            nombre_ind = st.selectbox("Indicador:", list(indicadores_dict.keys()), key="ind_mapa")
+            col_ind    = indicadores_dict[nombre_ind]
+        else:
+            nombre_ind = "Clústeres Moran"
+            col_ind    = "Cluster_Moran"
+            st.info("Modo Moran activo: %VUT vs €/m²")
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### Indicador seleccionado")
+    st.sidebar.markdown(_DESCRIPCIONES_IND.get(nombre_ind, ""))
 
     df_f = gdf[(gdf['municipio'] == ciudad_focal) & (gdf['Fecha_ano'] == ano_sel)].copy()
 
@@ -671,13 +665,6 @@ with tab_mapa:
                     'IDS_VUT':      'IDS',
                     'Cuadrante_IDS': 'Cuadrante',
                 }
-            )
-            st.caption(
-                f"Umbral %VUT = **{umbral_display:.1f} %** (mediana de {ciudad_focal} en {ano_sel}). "
-                "🔴 **Saturada activa**: alta saturación y sigue creciendo más que sus vecinas. "
-                "🟠 **Plateau saturado**: alta saturación pero crecimiento estabilizado (centro histórico). "
-                "🟡 **Difusión emergente**: baja saturación pero avanzando — frente activo de la mancha de aceite. "
-                "🟢 **Sin presión**: baja saturación sin dinamismo relativo."
             )
 
         else:
