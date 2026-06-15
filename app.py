@@ -506,16 +506,6 @@ if 'IDS_VUT' in gdf.columns:
     indicadores_dict["Difusión Espacial VUT"] = "Cuadrante_IDS"
 
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("### Añadir nueva ciudad")
-st.sidebar.info(
-    "Para replicar en otra provincia:\n\n"
-    "1. Añade su `.gpkg` a la carpeta\n"
-    "2. Incorpora sus secciones al dataset IATUR\n"
-    "3. La app lo detecta automáticamente"
-)
-
-
 # ===========================================================================
 # TABS PRINCIPALES
 # ===========================================================================
@@ -550,6 +540,15 @@ with tab_mapa:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Indicador seleccionado")
     st.sidebar.markdown(_DESCRIPCIONES_IND.get(nombre_ind, ""))
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### Añadir nueva ciudad")
+    st.sidebar.info(
+        "Para replicar en otra provincia:\n\n"
+        "1. Añade su `.gpkg` a la carpeta\n"
+        "2. Incorpora sus secciones al dataset IATUR\n"
+        "3. La app lo detecta automáticamente"
+    )
 
     df_f = gdf[(gdf['municipio'] == ciudad_focal) & (gdf['Fecha_ano'] == ano_sel)].copy()
 
