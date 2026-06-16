@@ -461,7 +461,7 @@ _DESCRIPCIONES_IND = {
         "actual de saturación (%VUT) y su dinámica de crecimiento relativo (IDS).\n\n"
         "🔴 **Saturada activa** — %VUT ≥ mediana e IDS ≥ 0: zona ya muy saturada que "
         "además sigue creciendo más rápido que sus vecinas.\n\n"
-        "🟠 **Plateau saturado** — %VUT ≥ mediana e IDS < 0: zona muy saturada cuyo "
+        "🟠 **Saturada estable** — %VUT ≥ mediana e IDS < 0: zona muy saturada cuyo "
         "crecimiento se ha estabilizado (frente de ola ya pasado). "
         "Típico del **centro urbano consolidado**.\n\n"
         "🟡 **Difusión emergente** — %VUT < mediana e IDS ≥ 0: baja saturación actual "
@@ -627,7 +627,7 @@ with tab_mapa:
                 if alta_sat and difunde:
                     return 'Saturada activa'
                 elif alta_sat and not difunde:
-                    return 'Plateau saturado'
+                    return 'Saturada estable'
                 elif not alta_sat and difunde:
                     return 'Difusión emergente'
                 else:
@@ -644,13 +644,13 @@ with tab_mapa:
                 color='Cuadrante_IDS',
                 color_discrete_map={
                     'Saturada activa':    '#b91c1c',
-                    'Plateau saturado':   '#f97316',
+                    'Saturada estable':   '#f97316',
                     'Difusión emergente': '#eab308',
                     'Sin presión':        '#16a34a',
                     'Sin datos':          '#e5e7eb',
                 },
                 category_orders={'Cuadrante_IDS': [
-                    'Saturada activa', 'Plateau saturado',
+                    'Saturada activa', 'Saturada estable',
                     'Difusión emergente', 'Sin presión', 'Sin datos'
                 ]},
                 mapbox_style="carto-positron",
