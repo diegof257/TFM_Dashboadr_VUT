@@ -473,11 +473,11 @@ _DESCRIPCIONES_IND = {
     "Clústeres Moran": (
         "**Clústeres de autocorrelación espacial bivariada** (%VUT ↔ €/m²), "
         "calculados con el I de Moran Local (LISA, 999 permutaciones).\n\n"
-        "🔴 **HH** — Alta saturación VUT y alquiler alto: zona de presión directa.\n\n"
-        "🩷 **LH** — Baja saturación pero alquiler alto: efecto de *contagio* "
+        "**HH** — Alta saturación VUT y alquiler alto: zona de presión directa.\n\n"
+        "**LH** — Baja saturación pero alquiler alto: efecto de *contagio* "
         "espacial desde zonas vecinas saturadas.\n\n"
-        "🔵 **LL** — Baja saturación y alquiler bajo: zona residencial protegida.\n\n"
-        "💙 **HL** — Alta saturación pero alquiler bajo: outlier o zona en transición.\n\n"
+        "**LL** — Baja saturación y alquiler bajo: zona residencial protegida.\n\n"
+        "**HL** — Alta saturación pero alquiler bajo: outlier o zona en transición.\n\n"
         "El clúster LH es la evidencia clave del efecto *mancha de aceite*."
     ),
 }
